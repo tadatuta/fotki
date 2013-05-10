@@ -1,0 +1,35 @@
+{
+  "name": "fotki",
+  "version": "0.0.1",
+  "homepage": "http://github.com/tadatuta/fotki",
+  "author": "Vladimir Grinenko <i@tadatuta.com> (http://github.com/tadatuta)",
+  "bugs": {
+    "url": "https://github.com/tadatuta/fotki/issues"
+  },
+  "description": "node.js module for Yandex.Fotki API",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tadatuta/fotki"
+  },
+  "engines": {
+    "node": ">= 0.6.0"
+  },
+  "dependencies": {
+    "request": "*",
+    "inherit": "*",
+    "vow": "*"
+  },
+  "keywords": [
+    "fotki",
+    "yandex fotki",
+    "api",
+    "photo hosting",
+    "node.js"
+  ],
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "http://github.com/tadatuta/bemp/raw/master/LICENSE"
+    }
+  ]
+}
