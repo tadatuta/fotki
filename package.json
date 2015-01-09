@@ -17,7 +17,7 @@
   "dependencies": {
     "request": "*",
     "inherit": "*",
-    "vow": "*"
+    "vow": "0.4.x"
   },
   "keywords": [
     "fotki",
