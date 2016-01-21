@@ -18,6 +18,12 @@
     "request": "*",
     "vow": "*"
   },
+  "devDependencies": {
+    "git-hooks": "https://github.com/aliosv/git-hooks-js/archive/windows-support.tar.gz",
+    "istanbul": "*",
+    "jscs": "1.13.1",
+    "jshint-groups": "~0.6.0"
+  },
   "keywords": [
     "fotki",
     "yandex fotki",
@@ -30,5 +36,9 @@
       "type": "MIT",
       "url": "http://github.com/tadatuta/bemp/raw/master/LICENSE"
     }
-  ]
+  ],
+  "scripts": {
+    "coverage": "istanbul cover ./node_modules/mocha/bin/_mocha --recursive tests",
+    "lint": "jshint-groups && jscs ."
+  }
 }
