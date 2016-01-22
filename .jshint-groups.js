@@ -33,7 +33,7 @@ module.exports = {
         tests : {
             options : {
                 node : true,
-                predef : ['describe', 'it']
+                predef : ['after', 'afterEach', 'before', 'beforeEach', 'describe', 'it']
             },
             includes : ['tests/**/*.js']
         }

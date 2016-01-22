@@ -145,9 +145,50 @@ describe('Iterator\'s method', function() {
     });
 
     describe('all', function() {
-        it('should return all', function(done) {
+        var iterator;
 
-            done();
+        beforeEach(function() {
+            iterator = new Iterator(getMethod);
+        });
+
+        it('should return promise', function() {
+            iterator.all().should.be.a.Promise();
+        });
+
+        it('returnable promise should be resolved by array with all data', function(done) {
+            testPromise(iterator.all(), function(data) {
+                data.should.be.an.Array();
+            }, done);
+        });
+
+        it('returnable promise should notify', function(done) {
+            var spy = sinon.spy();
+
+            iterator.all().progress(spy).done(function() {
+                try {
+                    spy.calledThrice.should.be.true();
+                    done();
+                } catch(e) {
+                    done(e);
+                }
+            });
+        });
+
+        it('returnable promise should fail if some next() are fail', function(done) {
+            var spy = sinon.spy();
+
+            iterator = new Iterator(function() {
+                return getMethod(4);
+            });
+
+            iterator.all().fail(spy).always(function() {
+                try {
+                    spy.calledOnce.should.be.true();
+                    done();
+                } catch(e) {
+                    done(e);
+                }
+            });
         });
     });
 
