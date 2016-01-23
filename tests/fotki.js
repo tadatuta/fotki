@@ -31,6 +31,17 @@ describe('Fotki', function() {
         api.auth('abc-ua', 'dac016e644cc403a9f4342f4216ec93c');
     });
 
+    it('_makeRequest');
+    it('auth');
+    it('getServiceDocument');
+    it('addEntry');
+    it('getEntry');
+    it('updateEntry');
+    it('deleteEntry');
+    it('getCollection');
+    it('getCollectionIterator');
+    it('getFilteredIterator');
+
     describe('album method', function() {
         var albumLink,
             albumId;
@@ -157,15 +168,34 @@ describe('Fotki', function() {
                 });
             });
         });
+
+        describe('getAlbumsCollectionByName', function() {
+            authDescribe(api.getAlbumsCollectionByName.bind(api));
+
+            it('should require name', function() {
+                api.deleteAlbum.bind(api).should.throw();
+            });
+
+            it('should return iterator by album\'s entries', function(done) {
+                var iterator = api.getAlbumsCollectionByName('test', { limit : 100 });
+
+                iterator.should.be.instanceOf(Iterator);
+                iterator.current().then(function(data) {
+                    data.should.be.an.Array();
+                    // TODO: entry check?
+                    done();
+                }, function(err) {
+                    done(err);
+                });
+            });
+        });
     });
 
     describe('photo method', function() {
-        //var photoLink = 'http://api-fotki.yandex.ru/api/users/abc-ua/photo/762631/',
-        //    photoId = 762631;
+        var photoLink = 'http://api-fotki.yandex.ru/api/users/abc-ua/photo/762631/',
+            photoId = 762631;
 
-        describe('uploadPhoto', function() {
-
-        });
+        it('uploadPhoto');
 
         describe('getPhoto', function() {
             authDescribe(api.getPhoto.bind(api));
@@ -174,8 +204,8 @@ describe('Fotki', function() {
                 api.getPhoto.bind(api).should.throw();
             });
 
-            it('should return promise which resolves by photo entry'/*, function(done) {
-                var promise = api.getAlbum(photoId);
+            it('should return promise which resolves by photo entry', function(done) {
+                var promise = api.getPhoto(photoId);
 
                 promise.should.be.Promise();
                 promise.then(function(res) {
@@ -186,10 +216,10 @@ describe('Fotki', function() {
                         done(e);
                     }
                 });
-            }*/);
+            });
         });
 
-        describe('updatePhoto', function() {
+        it('updatePhoto'/*, function() {
             authDescribe(api.updatePhoto.bind(api));
 
             it('should require id', function() {
@@ -223,9 +253,9 @@ describe('Fotki', function() {
             //        }
             //    });
             //});
-        });
+        }*/);
 
-        describe('deletePhoto', function() {
+        it('deletePhoto'/*, function() {
             authDescribe(api.deletePhoto.bind(api));
 
             it('should require id', function() {
@@ -245,7 +275,13 @@ describe('Fotki', function() {
             //        }
             //    });
             //});
-        });
+        }*/);
+    });
+
+    describe('tag method', function() {
+        it('getTag');
+        it('updateTag');
+        it('deleteTag');
     });
 
     [
