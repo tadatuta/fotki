@@ -4,4 +4,4 @@
  * MIT Licensed
  */
 
-module.exports = require('./lib/fotki');
+module.exports = require('./lib/api');

@@ -1,4 +1,5 @@
-var should = require('should'),
+var path = require('path'),
+    should = require('should'),
     api = require('..'),
     Iterator = require('../lib/iterator');
 
@@ -195,7 +196,12 @@ describe('Fotki', function() {
         var photoLink = 'http://api-fotki.yandex.ru/api/users/abc-ua/photo/762631/',
             photoId = 762631;
 
-        it('uploadPhoto');
+        it('uploadPhoto', function(done) {
+            api.uploadPhoto(path.join(__dirname, 'test.png')).then(function(res) {
+                console.log(res);
+                done();
+            });
+        });
 
         describe('getPhoto', function() {
             authDescribe(api.getPhoto.bind(api));
