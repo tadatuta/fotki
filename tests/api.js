@@ -53,8 +53,6 @@ describe('Fotki', function() {
         it('should reject');
         it('should check auth');
         it('should cache');
-        it('should ');
-        it('should ');
     });
 
     describe('method auth', function() {
