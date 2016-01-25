@@ -3,38 +3,86 @@ var path = require('path'),
     api = require('..'),
     Iterator = require('../lib/iterator');
 
+var credentials = { user : 'abc-ua', token : 'dac016e644cc403a9f4342f4216ec93c' };
+
 describe('Fotki', function() {
-    var authDescribe = function(method) {
-        describe('should not work without authorization', function() {
-            var user,
-                token;
-
-            before(function() {
-                user = api._username;
-                token = api._token;
-
-                api.auth(undefined, undefined);
+    var testPromiseResolve = function(promise, cb, done) {
+            promise.then(function() {
+                try {
+                    cb.apply(this, arguments);
+                    done();
+                } catch(e) {
+                    done(e);
+                }
+            }, function(err) {
+                done(new Error(JSON.stringify(err)));
             });
-            after(function() { api.auth(user, token); });
+        },
+        authDescribe = function(method) {
+            describe('should not work without authorization', function() {
+                var user,
+                    token;
 
-            it('should require username', function() {
-                method.should.throw();
-            });
+                before(function() {
+                    user = api._username;
+                    token = api._token;
 
-            it('should require token', function() {
-                api.auth('username');
-                method.should.throw();
+                    api.auth(undefined, undefined);
+                });
+
+                after(function() { api.auth(user, token); });
+
+                it('should require username', function() {
+                    method.should.throw();
+                });
+
+                it('should require token', function() {
+                    api.auth('username');
+                    method.should.throw();
+                });
             });
-        });
-    };
+        };
 
     before(function() {
-        api.auth('abc-ua', 'dac016e644cc403a9f4342f4216ec93c');
+        api.auth(credentials.user, credentials.token);
     });
 
-    it('_makeRequest');
-    it('auth');
-    it('getServiceDocument');
+    describe('_makeRequest', function() {
+        it('should return promise which resolves by server response body');
+        it('should resolve');
+        it('should reject');
+        it('should check auth');
+        it('should cache');
+        it('should ');
+        it('should ');
+    });
+
+    describe('method auth', function() {
+        var returns = api.auth(credentials.user, credentials.token);
+
+        it('should set credentials', function() {
+            should.equal(api._username, credentials.user);
+            should.equal(api._token, credentials.token);
+        });
+
+        it('should return "this"', function() {
+            returns.should.equal(api);
+        });
+    });
+
+    describe('method getServiceDocument', function() {
+        authDescribe(api.getServiceDocument.bind(api));
+
+        it('should return promise which resolves by "service document"', function(done) {
+            var promise = api.getServiceDocument();
+
+            promise.should.be.Promise();
+            testPromiseResolve(promise, function(res) {
+                should.exist(res.collections);
+            }, done);
+        });
+    });
+
     it('addEntry');
     it('getEntry');
     it('updateEntry');
@@ -66,18 +114,13 @@ describe('Fotki', function() {
                 });
 
                 promise.should.be.a.Promise();
-                promise.then(function(res) {
-                    try {
-                        res.title.should.be.equal('test');
-                        res.summary.should.be.equal('test');
-                        res.protected.should.be.true();
-                        albumLink = res.links.self;
-                        albumId = albumLink.match(/^.+\/(\d+)\/?$/)[1];
-                        done();
-                    } catch(e) {
-                        done(e);
-                    }
-                });
+                testPromiseResolve(promise, function(res) {
+                    res.title.should.be.equal('test');
+                    res.summary.should.be.equal('test');
+                    res.protected.should.be.true();
+                    albumLink = res.links.self;
+                    albumId = albumLink.match(/^.+\/(\d+)\/?$/)[1];
+                }, done);
             });
 
             it('should be nested in other album'/*, function(done) {
@@ -101,14 +144,9 @@ describe('Fotki', function() {
                 var promise = api.getAlbum(albumId);
 
                 promise.should.be.Promise();
-                promise.then(function(res) {
-                    try {
-                        res.links.self.should.be.equal(albumLink);
-                        done();
-                    } catch(e) {
-                        done(e);
-                    }
-                });
+                testPromiseResolve(promise, function(res) {
+                    res.links.self.should.be.equal(albumLink);
+                }, done);
             });
         });
 
@@ -134,17 +172,12 @@ describe('Fotki', function() {
                 });
 
                 promise.should.be.Promise();
-                promise.then(function(res) {
-                    try {
-                        res.links.self.should.be.equal(albumLink);
-                        res.title.should.be.equal('updated');
-                        res.summary.should.be.equal('updated');
-                        should.equal(res.protected, undefined);
-                        done();
-                    } catch(e) {
-                        done(e);
-                    }
-                });
+                testPromiseResolve(promise, function(res) {
+                    res.links.self.should.be.equal(albumLink);
+                    res.title.should.be.equal('updated');
+                    res.summary.should.be.equal('updated');
+                    should.equal(res.protected, undefined);
+                }, done);
             });
         });
 
@@ -159,14 +192,9 @@ describe('Fotki', function() {
                 var promise = api.deleteAlbum(albumId);
 
                 promise.should.be.Promise();
-                promise.then(function(res) {
-                    try {
-                        should.equal(res, '');
-                        done();
-                    } catch(e) {
-                        done(e);
-                    }
-                });
+                testPromiseResolve(promise, function(res) {
+                    should.equal(res, '');
+                }, done);
             });
         });
 
@@ -193,13 +221,18 @@ describe('Fotki', function() {
     });
 
     describe('photo method', function() {
-        var photoLink = 'http://api-fotki.yandex.ru/api/users/abc-ua/photo/762631/',
-            photoId = 762631;
+        var photoLink,
+            photoId;
 
-        it('uploadPhoto', function(done) {
-            api.uploadPhoto(path.join(__dirname, 'test.png')).then(function(res) {
-                console.log(res);
-                done();
+        describe('uploadPhoto', function() {
+            it('should return promise which resolves by photo entry', function(done) {
+                var promise = api.uploadPhoto(path.join(__dirname, 'test.png'));
+
+                promise.should.be.Promise();
+                testPromiseResolve(promise, function(res) {
+                    photoLink = res.links.self;
+                    photoId = photoLink.match(/^.+\/(\d+)\/?$/)[1];
+                }, done);
             });
         });
 
@@ -214,80 +247,147 @@ describe('Fotki', function() {
                 var promise = api.getPhoto(photoId);
 
                 promise.should.be.Promise();
-                promise.then(function(res) {
-                    try {
-                        res.links.self.should.be.equal(photoLink);
-                        done();
-                    } catch(e) {
-                        done(e);
-                    }
-                });
+                testPromiseResolve(promise, function(res) {
+                    res.links.self.should.be.equal(photoLink);
+                }, done);
             });
         });
 
-        it('updatePhoto'/*, function() {
+        describe('updatePhoto', function() {
             authDescribe(api.updatePhoto.bind(api));
 
             it('should require id', function() {
                 api.updatePhoto.bind(api).should.throw();
             });
 
-            //it('should require params', function() {
-            //    api.updateAlbum.bind(api, photoId).should.throw();
-            //    api.updateAlbum.bind(api, photoId, { title : '' }).should.throw();
-            //    api.updateAlbum.bind(api, photoId, { bla : '' }).should.throw();
-            //});
-            //
-            //it('should return promise which resolves by album entry', function(done) {
-            //    var promise = api.updateAlbum(photoId, {
-            //        title : 'updated',
-            //        summary : 'updated',
-            //        password : ''
-            //        // TODO: link?
-            //    });
-            //
-            //    promise.should.be.Promise();
-            //    promise.then(function(res) {
-            //        try {
-            //            res.links.self.should.be.equal(photoLink);
-            //            res.title.should.be.equal('updated');
-            //            res.summary.should.be.equal('updated');
-            //            should.equal(res.protected, undefined);
-            //            done();
-            //        } catch(e) {
-            //            done(e);
-            //        }
-            //    });
-            //});
-        }*/);
+            it('should require params', function() {
+                api.updatePhoto.bind(api, photoId).should.throw();
+                api.updatePhoto.bind(api, photoId, { title : '' }).should.throw();
+                api.updatePhoto.bind(api, photoId, { bla : '' }).should.throw();
+            });
 
-        it('deletePhoto'/*, function() {
+            it('should return promise which resolves by photo entry', function(done) {
+                var promise = api.updatePhoto(photoId, {
+                    title : 'updated',
+                    summary : 'updated'
+                });
+
+                promise.should.be.Promise();
+                testPromiseResolve(promise, function(res) {
+                    res.links.self.should.be.equal(photoLink);
+                    res.title.should.be.equal('updated');
+                    res.summary.should.be.equal('updated');
+                }, done);
+            });
+        });
+
+        describe('deletePhoto', function() {
             authDescribe(api.deletePhoto.bind(api));
 
             it('should require id', function() {
                 api.deletePhoto.bind(api).should.throw();
             });
 
-            //it('should return promise which resolves by ""', function(done) {
-            //    var promise = api.deleteAlbum(photoId);
-            //
-            //    promise.should.be.Promise();
-            //    promise.then(function(res) {
-            //        try {
-            //            should.equal(res, '');
-            //            done();
-            //        } catch(e) {
-            //            done(e);
-            //        }
-            //    });
-            //});
-        }*/);
+            it('should return promise which resolves by ""', function(done) {
+                var promise = api.deletePhoto(photoId);
+
+                promise.should.be.Promise();
+                testPromiseResolve(promise, function(res) {
+                    should.equal(res, '');
+                }, done);
+            });
+        });
     });
 
     describe('tag method', function() {
-        it('getTag');
-        it('updateTag');
-        it('deleteTag');
+        var photoLink,
+            photoId,
+            tag = 'test';
+
+        before(function(done) {
+            api.getServiceDocument().then(function(res) {
+                var tagsCollectionUrl = res.collections['tag-list'];
+
+                return api.uploadPhoto(path.join(__dirname, 'test.png')).then(function(res) {
+                    var tags = {};
+
+                    tags[tag] = tagsCollectionUrl;
+                    photoLink = res.links.self;
+                    photoId = photoLink.match(/^.+\/(\d+)\/?$/)[1];
+
+                    return api.updatePhoto(photoId, { tags : tags });
+                }).then(function() {
+                    done();
+                });
+            });
+        });
+
+        after(function(done) {
+            api.deletePhoto(photoId).then(function() {
+                done();
+            });
+        });
+
+        describe('getTag', function() {
+            authDescribe(api.getTag.bind(api));
+
+            it('should require id', function() {
+                api.getTag.bind(api).should.throw();
+            });
+
+            it('should return promise which resolves by tag entry', function(done) {
+                var promise = api.getTag(tag);
+
+                promise.should.be.Promise();
+                testPromiseResolve(promise, function(res) {
+                    res.title.should.be.equal(tag);
+                }, done);
+            });
+        });
+
+        describe('updateTag', function() {
+            authDescribe(api.updateTag.bind(api));
+
+            it('should require id', function() {
+                api.updateTag.bind(api).should.throw();
+            });
+
+            it('should require params', function() {
+                api.updateTag.bind(api, tag).should.throw();
+                api.updateTag.bind(api, tag, { title : '' }).should.throw();
+                api.updateTag.bind(api, tag, { bla : '' }).should.throw();
+            });
+
+            it('should return promise which resolves by tag entry', function(done) {
+                var newTag = 'updated',
+                    promise = api.updateTag(tag, {
+                        title : newTag
+                    });
+
+                promise.should.be.Promise();
+                testPromiseResolve(promise, function(res) {
+                    res.title.should.be.equal(newTag);
+                    tag = newTag;
+                }, done);
+            });
+        });
+
+        describe('deleteTag', function() {
+            authDescribe(api.deleteTag.bind(api));
+
+            it('should require id', function() {
+                api.deleteTag.bind(api).should.throw();
+            });
+
+            it('should return promise which resolves by ""', function(done) {
+                var promise = api.deleteTag(tag);
+
+                promise.should.be.Promise();
+                testPromiseResolve(promise, function(res) {
+                    should.equal(res, '');
+                }, done);
+            });
+        });
     });
 
     [
@@ -306,14 +406,9 @@ describe('Fotki', function() {
                     var iterator = api[value.method].apply(api, value.args || []);
 
                     iterator.should.be.instanceOf(Iterator);
-                    iterator.current().then(function(data) {
-                        try {
-                            data.id.should.be.equal(value.id);
-                            done();
-                        } catch(e) {
-                            done(e);
-                        }
-                    });
+                    testPromiseResolve(iterator.current(), function(data) {
+                        data.id.should.be.equal(value.id);
+                    }, done);
                 });
             });
         });
@@ -346,14 +441,9 @@ describe('Fotki', function() {
                 var iterator = api[value.method]();
 
                 iterator.should.be.instanceOf(Iterator);
-                iterator.current().then(function(data) {
-                    try {
-                        data.id.should.be.equal(value.id);
-                        done();
-                    } catch(e) {
-                        done(e);
-                    }
-                });
+                testPromiseResolve(iterator.current(), function(data) {
+                    data.id.should.be.equal(value.id);
+                }, done);
             });
         });
     });
