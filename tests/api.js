@@ -1,7 +1,9 @@
 var path = require('path'),
     should = require('should'),
+    vow = require('vow'),
     api = require('..'),
-    Iterator = require('../lib/iterator');
+    Iterator = require('../lib/iterator'),
+    imgPath = path.join(__dirname, 'test.png');
 
 var credentials = { user : 'abc-ua', token : 'dac016e644cc403a9f4342f4216ec93c' };
 
@@ -16,6 +18,18 @@ describe('Fotki', function() {
                 }
             }, function(err) {
                 done(new Error(JSON.stringify(err)));
+            });
+        },
+        testPromiseReject = function(promise, cb, done) {
+            promise.then(function() {
+                done(new Error(JSON.stringify(arguments)));
+            }, function() {
+                try {
+                    cb.apply(this, arguments);
+                    done();
+                } catch(e) {
+                    done(e);
+                }
             });
         },
         authDescribe = function(method) {
@@ -47,12 +61,61 @@ describe('Fotki', function() {
         api.auth(credentials.user, credentials.token);
     });
 
-    describe('_makeRequest', function() {
-        it('should return promise which resolves by server response body');
-        it('should resolve');
-        it('should reject');
-        it('should check auth');
-        it('should cache');
+    describe('method _request', function() {
+        it('should require path', function() {
+            api._makeRequest.should.throw();
+            api._makeRequest.bind(api, { path : 0 }).should.throw();
+        });
+
+        it('should check auth', function() {
+            var user = api._username,
+                token = api._token;
+
+            [{}, { user : credentials.user }, { token : credentials.token }].forEach(function(value) {
+                api.auth(value.user, value.token);
+                api._makeRequest.bind(api, { path : '%user%' }).should.throw();
+                api._makeRequest.bind(api, { path : 'top' }).should.not.throw();
+            });
+
+            api.auth(user, token);
+        });
+
+        it('should return promise which resolves by server response', function(done) {
+            var promise = api._makeRequest({ path : '%user%' });
+
+            promise.should.be.a.Promise();
+            testPromiseResolve(promise, function(res) {
+                should.exist(res.collections);
+            }, done);
+        });
+
+        it('should return promise which rejects by server response', function(done) {
+            var promise = api._makeRequest({ path : '404' });
+
+            promise.should.be.a.Promise();
+            testPromiseReject(promise, function(res) {
+                res.statusCode.should.be.equal(404);
+            }, done);
+        });
+    });
+
+    describe('method _makeRequest', function() {
+        it('should return same promise while request pending', function(done) {
+            vow.allResolved([{ path : '404' }, { path : '%user%' }].map(function(params) {
+                var getPromise = function() { return api._makeRequest(params); },
+                    promise = getPromise();
+
+                promise.should.be.a.Promise();
+                getPromise().should.be.equal(promise);
+                promise.always(function() {
+                    getPromise().should.not.equal(promise);
+                });
+
+                return promise;
+            })).always(function() {
+                done();
+            });
+        });
     });
 
     describe('method auth', function() {
@@ -191,6 +254,7 @@ describe('Fotki', function() {
 
                 promise.should.be.Promise();
                 testPromiseResolve(promise, function(res) {
+                    console.log(res);
                     should.equal(res, '');
                 }, done);
             });
@@ -223,8 +287,12 @@ describe('Fotki', function() {
             photoId;
 
         describe('uploadPhoto', function() {
+            it('should check file extension', function() {
+                api.uploadPhoto.should.throw();
+            });
+
             it('should return promise which resolves by photo entry', function(done) {
-                var promise = api.uploadPhoto(path.join(__dirname, 'test.png'));
+                var promise = api.uploadPhoto(imgPath);
 
                 promise.should.be.Promise();
                 testPromiseResolve(promise, function(res) {
@@ -306,7 +374,7 @@ describe('Fotki', function() {
             api.getServiceDocument().then(function(res) {
                 var tagsCollectionUrl = res.collections['tag-list'];
 
-                return api.uploadPhoto(path.join(__dirname, 'test.png')).then(function(res) {
+                return api.uploadPhoto(imgPath).then(function(res) {
                     var tags = {};
 
                     tags[tag] = tagsCollectionUrl;
@@ -388,23 +456,107 @@ describe('Fotki', function() {
         });
     });
 
+    // TODO: create resources
     [
-        { method : 'getAlbumsCollection', name : 'all albums', id : 'urn:yandex:fotki:abc-ua:albums' },
-        { method : 'getPhotosCollection', name : 'all photos', id : 'urn:yandex:fotki:abc-ua:photos' },
-        { method : 'getTagsCollection', name : 'all tags', id : 'urn:yandex:fotki:abc-ua:tags' },
-        { method : 'getAlbumPhotosCollection', name : 'album photos',
-            id : 'urn:yandex:fotki:abc-ua:album:222701:photos', args : [222701] },
-        { method : 'getTagPhotosCollection', name : 'tag photos',
-            id : 'urn:yandex:fotki:abc-ua:tag:test:photos', args : ['test'] }
+        {
+            method : 'getAlbumsCollection', name : 'all albums', id : 'urn:yandex:fotki:abc-ua:albums',
+            before : function(done) {
+                var _this = this;
+
+                vow.all([api.addAlbum({ title : 'test' }), api.addAlbum({ title : 'test' })]).then(function(res) {
+                    _this.links = res.map(function(entry) { return entry.links.self; });
+                    done();
+                });
+            },
+            after : function(done) {
+                vow.all(this.links.map(function(link) {
+                    return api.deleteAlbum(link.match(/^.+\/(\d+)\/?\D*$/)[1]);
+                })).then(function() { done(); });
+            }
+        },
+        {
+            method : 'getPhotosCollection', name : 'all photos', id : 'urn:yandex:fotki:abc-ua:photos',
+            before : function(done) {
+                var _this = this;
+
+                vow.all([api.uploadPhoto(imgPath), api.uploadPhoto(imgPath)]).then(function(res) {
+                    _this.links = res.map(function(entry) { return entry.links.self; });
+                    done();
+                });
+            },
+            after : function(done) {
+                vow.all(this.links.map(function(link) {
+                    return api.deletePhoto(link.match(/^.+\/(\d+)\/?\D*$/)[1]);
+                })).then(function() { done(); });
+            }
+        },
+        {
+            method : 'getTagsCollection', name : 'all tags', id : 'urn:yandex:fotki:abc-ua:tags',
+            before : function(done) {
+                var _this = this;
+
+                vow.all([api.getServiceDocument(), api.uploadPhoto(imgPath)]).then(function(res) {
+                    var tagsCollectionUrl = res[0].collections['tag-list'];
+
+                    _this.link = res[1].links.self;
+
+                    return api.updatePhoto(res[1].links.self.match(/^.+\/(\d+)\/?\D*$/)[1],
+                        { tags : { test1 : tagsCollectionUrl, test2 : tagsCollectionUrl } });
+                }).then(function() { done(); });
+            },
+            after : function(done) {
+                api.deletePhoto(this.link.match(/^.+\/(\d+)\/?\D*$/)[1]).then(function() { done(); });
+            }
+        },
+        {
+            method : 'getAlbumPhotosCollection', name : 'album photos',
+            before : function(done) {
+                var _this = this;
+
+                api.addAlbum({ title : 'test' }).then(function(entry) {
+                    _this.id = entry.id + ':photos';
+                    _this.args = [entry.links.self.match(/^.+\/(\d+)\/?\D*$/)[1]];
+
+                    return api.uploadPhoto(imgPath, entry.links.self.match(/^.+\/(\d+)\/?\D*$/)[1]);
+                }).then(function() { done(); });
+            },
+            after : function(done) {
+                api.deleteAlbum(this.args[0]).then(function() { done(); });
+            }
+        },
+        {
+            method : 'getTagPhotosCollection', name : 'tag photos',
+            id : 'urn:yandex:fotki:abc-ua:tag:test:photos', args : ['test'],
+            before : function(done) {
+                var _this = this;
+
+                vow.all([api.getServiceDocument(), api.uploadPhoto(imgPath)]).then(function(res) {
+                    var tagsCollectionUrl = res[0].collections['tag-list'];
+
+                    _this.link = res[1].links.self;
+
+                    return api.updatePhoto(res[1].links.self.match(/^.+\/(\d+)\/?\D*$/)[1],
+                        { tags : { test : tagsCollectionUrl } });
+                }).then(function() { done(); });
+            },
+            after : function(done) {
+                api.deletePhoto(this.link.match(/^.+\/(\d+)\/?\D*$/)[1]).then(function() { done(); });
+            }
+        }
     ].forEach(function(value) {
             describe(value.method, function() {
+                value.before && before(value.before.bind(value));
+                value.after && after(value.after.bind(value));
+
                 authDescribe((function(iterator) { return iterator.current.bind(iterator); }(api[value.method]())));
 
                 it('should return iterator by ' + value.name + ' collection', function(done) {
-                    var iterator = api[value.method].apply(api, value.args || []);
+                    var iterator = api[value.method].apply(api, (value.args || []).concat({ limit : 1 }));
 
                     iterator.should.be.instanceOf(Iterator);
+
                     testPromiseResolve(iterator.current(), function(data) {
+                        data.entries.length.should.be.equal(1);
                         data.id.should.be.equal(value.id);
                     }, done);
                 });
@@ -436,10 +588,11 @@ describe('Fotki', function() {
             });
 
             it('should return iterator by ' + value.name + ' collection', function(done) {
-                var iterator = api[value.method]();
+                var iterator = api[value.method]({ limit : 1 });
 
                 iterator.should.be.instanceOf(Iterator);
                 testPromiseResolve(iterator.current(), function(data) {
+                    should.equal(data.entries.length, 1);
                     data.id.should.be.equal(value.id);
                 }, done);
             });
