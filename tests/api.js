@@ -1,4 +1,5 @@
 var HTTP = require('http'),
+    PATH = require('path'),
     URL = require('url'),
     SHOULD = require('should'),
     SINON = require('sinon'),
@@ -8,74 +9,117 @@ var HTTP = require('http'),
     Iterator = require('../lib/iterator'),
     credentials = { user : 'user', token : 'token' },
 
+    shouldReturnPromise = function(method) {
+        describe('should return promise', function() {
+            it('which resolves with JSON', function() {
+                return method('http://127.0.0.1:8000/json').should.be.fulfilledWith({ collections : {} });
+            });
+
+            it('which resolves with text', function() {
+                return method('http://127.0.0.1:8000/').should.be.fulfilledWith('OK');
+            });
+
+            it('which rejects with server error', function() {
+                return method('http://127.0.0.1:8000/404').should.be.rejectedWith({
+                    statusCode : 404,
+                    statusMessage : 'Not Found',
+                    target : 'http://127.0.0.1:8000/404'
+                });
+            });
+
+            it('which rejects with connection error', function() {
+                return method('http://127.0.0.1:8000/econ').should.be.rejectedWith({
+                    code : 'ECONNRESET'
+                });
+            });
+        });
+    },
     _requestAbstractionTest = function(params) {
         describe('method ' + params.name, function() {
             var method,
+                returns,
                 request;
 
             before(function() {
                 method = SINON.stub(api, params.name, api[params.name]);
                 request = SINON.stub(api, '_request', api._request);
+                returns = api[params.name].apply(api, params.args);
             });
             after(function() {
                 method.restore();
                 request.restore();
             });
-            afterEach(function() {
-                method.reset();
-                request.reset();
-            });
 
             describe('should run "_request" method', function() {
                 it('with arguments', function() {
-                    api[params.name].apply(api, params.args);
                     request.should.be.calledWith(params.calledWithExpected);
                 });
                 it('and return result', function() {
-                    api[params.name].apply(api, params.args).should.equal(request.returnValues[0]);
+                    returns.should.equal(request.returnValues[0]);
                 });
             });
         });
     };
 
 describe('Fotki', function() {
-    describe('method _request', function() {
-        var request,
-            server;
+    var request,
+        server,
+        socket;
 
-        before(function() {
-            request = SINON.stub();
-            server = HTTP.createServer().listen(8000);
-            server.on('request', function(req, res) {
-                var response,
-                    body = '';
+    var checkRequest = function(opts) {
+            if(opts.uri) it('on target address', function() {
+                request.args[0][0].headers.host.should.be.equal(URL.parse(opts.uri).host);
+                request.args[0][0].url.should.be.equal(URL.parse(opts.uri).path);
+            });
+            if(opts.method) it('with "' + opts.method + '" method', function() {
+                request.args[0][0].method.should.be.equal(opts.method);
+            });
+            if(opts.contentType) it('with "' + opts.contentType + '" content-type', function() {
+                request.args[0][0].headers['content-type'].should.match(new RegExp('^' + opts.contentType));
+            });
+            if(opts.auth) it('with authorization', function() {
+                request.args[0][0].headers.authorization.should.be.equal('OAuth ' + credentials.token);
+            });
+            if(opts.accept) it('ask respond in "' + opts.accept + '"', function() {
+                request.args[0][0].headers.accept.should.be.equal(opts.accept);
+            });
+        };
 
-                switch(req.url) {
-                    case '/json' :
-                        response = JSON.stringify({ collections : {} });
-                        break;
-                    case '/404' :
-                        res.writeHead('404', 'Not found');
-                        break;
-                    case '/econ' :
-                        req.setTimeout(1);
-                        break;
-                    default :
-                        response = 'OK';
-                }
+    before(function() {
+        request = SINON.stub();
+        server = HTTP.createServer().listen(8000);
+        server.on('connection', function(sock) {
+            socket = sock;
+        });
+        server.on('request', function(req, res) {
+            var body = '',
+                response;
 
-                req.on('data', function(chunk) { body += chunk; });
-                req.on('end', function() {
-                    setTimeout(function() {
-                        request.reset();
-                        request(req, body);
-                        res.end(response);
-                    }, 10);
-                });
+            switch(req.url) {
+                case '/json' :
+                    response = JSON.stringify({ collections : {} });
+                    break;
+                case '/404' :
+                    res.writeHead('404', 'Not found');
+                    break;
+                case '/econ' :
+                    socket.destroy();
+                    break;
+                default :
+                    response = 'OK';
+            }
+
+            req.on('data', function(chunk) { body += chunk; });
+            req.on('end', function() {
+                request.reset();
+                request(req, body);
+                res.end(response);
             });
         });
-        after(function() { server.close(); });
+    });
+    after(function() { server.close(); });
 
+    describe('method _request', function() {
         describe('should throw error if uri', function() {
             it('not defined', function() { api._request.should.throw(); });
             it('falsy', function() { api._request.bind(api, { uri : '' }).should.throw(); });
@@ -93,62 +137,27 @@ describe('Fotki', function() {
                         req = request.args[0][0];
                     });
             });
+            after(function() { api.auth(); });
 
-            after(function() {
-                api.auth();
-            });
-
-            it('on target address', function() {
-                req.headers.host.should.be.equal(URL.parse(uri).host);
-                req.url.should.be.equal(URL.parse(uri).path);
-            });
-
-            it('with target method', function() {
-                req.method.should.be.equal('POST');
-            });
-
-            it('with JSON content-type', function() {
-                req.headers['content-type'].should.be.equal('application/json');
-            });
-
-            it('with authorization', function() {
-                req.headers.authorization.should.be.equal('OAuth ' + credentials.token);
-            });
-
-            it('and ask respond in JSON', function() {
-                req.headers.accept.should.be.equal('application/json');
+            checkRequest({
+                uri : uri,
+                method : 'POST',
+                contentType : 'application/json',
+                auth : true,
+                accept : 'application/json'
             });
 
             it('with sending data on server', function() {
                 request.args[0][1].should.be.equal('request');
             });
+
+            it('with sending multipart/form-data on server'/*, function() {
+             request.args[0][1].should.be.equal('request');
+             }*/);
         });
-        describe('should return promise', function() {
-            it('which resolves with JSON', function() {
-                return api._request({
-                    uri : 'http://127.0.0.1:8000/json'
-                }).should.be.fulfilledWith({ collections : {} });
-            });
 
-            it('which resolves with text', function() {
-                return api._request({
-                    uri : 'http://127.0.0.1:8000/'
-                }).should.be.fulfilledWith('OK');
-            });
-
-            it('which rejects with server error', function() {
-                return api._request({ uri : 'http://127.0.0.1:8000/404' }).should.be.rejectedWith({
-                    statusCode : 404,
-                    statusMessage : 'Not Found',
-                    target : 'http://127.0.0.1:8000/404'
-                });
-            });
-
-            it('which rejects with connection error', function() {
-                return api._request({ uri : 'http://127.0.0.1:8000/econ' }).should.be.rejectedWith({
-                    code : 'ECONNRESET'
-                });
-            });
+        shouldReturnPromise(function(uri) {
+            return api._request({ uri : uri });
         });
     });
     describe('method _parseCollectionUri should parse', function() {
@@ -203,21 +212,10 @@ describe('Fotki', function() {
                 }())
             };
 
-        describe('base uri', function() {
-            runTests(tests.base);
-        });
-
-        describe('base uri + limit', function() {
-            runTests(getLimitTests(tests.base));
-        });
-
-        describe('base uri + sort-shift', function() {
-            runTests(tests['sort-shift']);
-        });
-
-        describe('base uri + sort-shift + limit', function() {
-            runTests(getLimitTests(tests['sort-shift']));
-        });
+        describe('base uri', function() { runTests(tests.base); });
+        describe('base uri + limit', function() { runTests(getLimitTests(tests.base)); });
+        describe('base uri + sort-shift', function() { runTests(tests['sort-shift']); });
+        describe('base uri + sort-shift + limit', function() { runTests(getLimitTests(tests['sort-shift'])); });
     });
     describe('method _buildCollectionUri', function() {
         describe('should throw error if opts.base', function() {
@@ -322,20 +320,82 @@ describe('Fotki', function() {
         });
     });
     [
-        { name : 'delete', args : ['http://127.0.0.1:8000/'], calledWithExpected : {
+        {
+            name : 'delete', args : ['http://127.0.0.1:8000/'], calledWithExpected : {
             method : 'DELETE',
             uri : 'http://127.0.0.1:8000/'
-        } },
-        { name : 'get', args : ['http://127.0.0.1:8000/'], calledWithExpected : {
+        }
+        },
+        {
+            name : 'get', args : ['http://127.0.0.1:8000/'], calledWithExpected : {
             method : 'GET',
             uri : 'http://127.0.0.1:8000/'
-        } },
-        { name : 'update', args : ['http://127.0.0.1:8000/', { title : 'title' }], calledWithExpected : {
+        }
+        },
+        {
+            name : 'update', args : ['http://127.0.0.1:8000/', { title : 'title' }], calledWithExpected : {
             body : JSON.stringify({ title : 'title' }),
             method : 'PUT',
             uri : 'http://127.0.0.1:8000/'
-        } }
+        }
+        }
     ].forEach(function(value) { _requestAbstractionTest(value); });
+    // TODO: check arguments or use _requestAbstractionTest
+    describe('method uploadBinary', function() {
+        describe('should run "_request" method', function() {
+            var returns,
+                request;
+
+            before(function() {
+                request = SINON.stub(api, '_request', function() { return VOW.fulfill(); });
+                returns = api.uploadBinary('http://api-fotki.yandex.ru/api/users/user/photos/', 'Buffer', 'image/png');
+            });
+            after(function() { request.restore(); });
+
+            it('with arguments', function() {
+                request.should.be.calledWith({
+                    body : 'Buffer',
+                    contentType : 'image/png',
+                    method : 'POST',
+                    uri : 'http://api-fotki.yandex.ru/api/users/user/photos/'
+                });
+            });
+            it('and return result', function() {
+                returns.should.equal(request.returnValues[0]);
+            });
+        });
+
+    });
+    describe('method uploadMultipartFormData', function() {
+        describe('should run "_request" method', function() {
+            var returns,
+                request;
+
+            before(function() {
+                request = SINON.stub(api, '_request', function() { return VOW.fulfill(); });
+                returns = api.uploadMultipartFormData('http://api-fotki.yandex.ru/api/users/user/photos/', {
+                    image : {},
+                    title : 'title'
+                });
+            });
+            after(function() { request.restore(); });
+
+            it('with arguments', function() {
+                request.should.be.calledWith({
+                    formData : {
+                        image : {},
+                        title : 'title'
+                    },
+                    contentType : 'multipart/form-data',
+                    method : 'POST',
+                    uri : 'http://api-fotki.yandex.ru/api/users/user/photos/'
+                });
+            });
+            it('and return result', function() {
+                returns.should.equal(request.returnValues[0]);
+            });
+        });
+    });
 
     describe('method getCollection', function() {
         describe('should throw error if uri', function() {
@@ -374,25 +434,203 @@ describe('Fotki', function() {
             it('invalid', function() { api.getServiceDocument.bind(api, 1).should.throw(); });
         });
         describe('should run "get" method', function() {
-            var request;
+            var returns,
+                request;
 
             before(function() {
                 request = SINON.stub(api, 'get', function() { return VOW.fulfill(); });
+                returns = api.getServiceDocument('user');
             });
             after(function() { request.restore(); });
-            afterEach(function() { request.reset(); });
 
             it('with arguments', function() {
-                api.getServiceDocument('user');
                 request.should.be.calledWith('http://api-fotki.yandex.ru/api/users/user/');
             });
             it('and return result', function() {
-                api.getServiceDocument('user').should.equal(request.returnValues[0]);
+                returns.should.equal(request.returnValues[0]);
             });
         });
     });
-    it('method createAlbum');
-    it('method uploadBinary');
-    it('method uploadMultipartForm');
-    it('method uploadPhoto');
+    describe('method createAlbum', function() {
+        describe('should throw error if params.title', function() {
+            it('not defined', function() {
+                api.createAlbum.should.throw();
+                api.createAlbum.bind(api, {}).should.throw();
+            });
+            it('invalid', function() { api.createAlbum.bind(api, { title : 0 }).should.throw(); });
+        });
+
+        describe('should make request', function() {
+            var stubs = [],
+                promise;
+
+            before(function() {
+                stubs.push(SINON.stub(api, 'getServiceDocument', function() {
+                    return VOW.fulfill({
+                        collections : {
+                            'album-list' : { href : 'http://127.0.0.1:8000/albums/' }
+                        }
+                    });
+                }));
+
+                api.auth(credentials.user, credentials.token);
+
+                return promise = api.createAlbum({
+                    title : 'test',
+                    summary : 'description',
+                    password : '123',
+                    link : 'http://127.0.0.1:8000/album/1/'
+                });
+            });
+            after(function() {
+                stubs.forEach(function(stub) { stub.restore(); });
+                api.auth();
+            });
+
+            checkRequest({
+                uri : 'http://127.0.0.1:8000/albums/',
+                method : 'POST',
+                contentType : 'application/json',
+                auth : 'true',
+                accept : 'application/json'
+            });
+
+            it('with body', function() {
+                request.args[0][1].should.be.equal(JSON.stringify({
+                    title : 'test',
+                    summary : 'description',
+                    password : '123',
+                    links : { album : 'http://127.0.0.1:8000/album/1/' }
+                }));
+            });
+            it('and return promise', function() {
+                promise.should.be.Promise();
+            });
+        });
+    });
+    describe('method upload', function() {
+        var stubs = [];
+
+        before(function() {
+            stubs.push(SINON.stub(api, 'getServiceDocument', function() {
+                return VOW.fulfill({
+                    collections : {
+                        'photo-list' : { href : 'http://127.0.0.1:8000/photos/' }
+                    }
+                });
+            }));
+            api.auth(credentials.user, credentials.token);
+        });
+        after(function() {
+            stubs.forEach(function(stub) { stub.restore(); });
+            api.auth();
+        });
+
+        describe('should check extension', function() {
+            it('and throw error if it not support', function() {
+                api.upload.bind(api, 'test.png2', 'http://127.0.0.1:8000/').should.throw();
+            });
+            describe('should support extension', function() {
+                var exts = ['png', 'jpg', 'jpeg', 'gif', 'bmp'];
+
+                exts = exts.concat(exts.map(function(value) { return value.toUpperCase(); }));
+
+                exts.forEach(function(value) {
+                    it(value, function() {
+                        api.upload.bind(api, 'test.' + value, {}, 'http://127.0.0.1:8000/').should.not.throw();
+                    });
+                });
+            });
+        });
+        describe('should make request to', function() {
+            var imagePath = PATH.join(__dirname, 'test.png'),
+                size = require('fs').statSync(imagePath).size,
+                promise;
+
+            describe('photos collection and send', function() {
+                var uri = 'http://127.0.0.1:8000/photos/';
+
+                describe('file', function() {
+                    before(function() {
+                        return promise = api.upload(imagePath);
+                    });
+
+                    checkRequest({
+                        uri : uri,
+                        method : 'POST',
+                        contentType : 'image/png',
+                        auth : true,
+                        accept : 'application/json'
+                    });
+                    it('with file content in body', function() {
+                        Number(request.args[0][0].headers['content-length']).should.be.equal(size);
+                    });
+                    it('and return promise', function() {
+                        promise.should.be.Promise();
+                    });
+                });
+                describe('multipart/form-data', function() {
+                    before(function() {
+                        return promise =  api.upload(imagePath, { title : 'test' });
+                    });
+
+                    checkRequest({
+                        uri : uri,
+                        method : 'POST',
+                        contentType : 'multipart/form-data',
+                        auth : true,
+                        accept : 'application/json'
+                    });
+                    it('with form-data in body', function() {
+                        Number(request.args[0][0].headers['content-length']).should.be.greaterThan(size);
+                    });
+                    it('and return promise', function() {
+                        promise.should.be.Promise();
+                    });
+                });
+            });
+            describe('provided uri and send', function() {
+                var uri = 'http://127.0.0.1:8000/album/1/';
+
+                describe('file', function() {
+                    before(function() {
+                        return promise = api.upload(imagePath, uri);
+                    });
+
+                    checkRequest({
+                        uri : uri,
+                        method : 'POST',
+                        contentType : 'image/png',
+                        auth : true,
+                        accept : 'application/json'
+                    });
+                    it('with file content in body', function() {
+                        Number(request.args[0][0].headers['content-length']).should.be.equal(size);
+                    });
+                    it('and return promise', function() {
+                        promise.should.be.Promise();
+                    });
+                });
+                describe('multipart/form-data', function() {
+                    before(function() {
+                        return promise = api.upload(imagePath, { title : 'test' }, uri);
+                    });
+
+                    checkRequest({
+                        uri : uri,
+                        method : 'POST',
+                        contentType : 'multipart/form-data',
+                        auth : true,
+                        accept : 'application/json'
+                    });
+                    it('with form-data in body', function() {
+                        Number(request.args[0][0].headers['content-length']).should.be.greaterThan(size);
+                    });
+                    it('and return promise', function() {
+                        promise.should.be.Promise();
+                    });
+                });
+            });
+        });
+    });
 });
