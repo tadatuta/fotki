@@ -7,59 +7,7 @@ var HTTP = require('http'),
     VOW = require('vow'),
     api = require('..'),
     Iterator = require('../lib/iterator'),
-    credentials = { user : 'user', token : 'token' },
-
-    shouldReturnPromise = function(method) {
-        describe('should return promise', function() {
-            it('which resolves with JSON', function() {
-                return method('http://127.0.0.1:8000/json').should.be.fulfilledWith({ collections : {} });
-            });
-
-            it('which resolves with text', function() {
-                return method('http://127.0.0.1:8000/').should.be.fulfilledWith('OK');
-            });
-
-            it('which rejects with server error', function() {
-                return method('http://127.0.0.1:8000/404').should.be.rejectedWith({
-                    statusCode : 404,
-                    statusMessage : 'Not Found',
-                    target : 'http://127.0.0.1:8000/404'
-                });
-            });
-
-            it('which rejects with connection error', function() {
-                return method('http://127.0.0.1:8000/econ').should.be.rejectedWith({
-                    code : 'ECONNRESET'
-                });
-            });
-        });
-    },
-    _requestAbstractionTest = function(params) {
-        describe('method ' + params.name, function() {
-            var method,
-                returns,
-                request;
-
-            before(function() {
-                method = SINON.stub(api, params.name, api[params.name]);
-                request = SINON.stub(api, '_request', api._request);
-                returns = api[params.name].apply(api, params.args);
-            });
-            after(function() {
-                method.restore();
-                request.restore();
-            });
-
-            describe('should run "_request" method', function() {
-                it('with arguments', function() {
-                    request.should.be.calledWith(params.calledWithExpected);
-                });
-                it('and return result', function() {
-                    returns.should.equal(request.returnValues[0]);
-                });
-            });
-        });
-    };
+    credentials = { user : 'user', token : 'token' };
 
 describe('Fotki', function() {
     var request,
@@ -82,6 +30,57 @@ describe('Fotki', function() {
             });
             if(opts.accept) it('ask respond in "' + opts.accept + '"', function() {
                 request.args[0][0].headers.accept.should.be.equal(opts.accept);
+            });
+        },
+        shouldReturnPromise = function(method) {
+            describe('should return promise', function() {
+                it('which resolves with JSON', function() {
+                    return method('http://127.0.0.1:8000/json').should.be.fulfilledWith({ collections : {} });
+                });
+
+                it('which resolves with text', function() {
+                    return method('http://127.0.0.1:8000/').should.be.fulfilledWith('OK');
+                });
+
+                it('which rejects with server error', function() {
+                    return method('http://127.0.0.1:8000/404').should.be.rejectedWith({
+                        statusCode : 404,
+                        statusMessage : 'Not Found',
+                        target : 'http://127.0.0.1:8000/404'
+                    });
+                });
+
+                it('which rejects with connection error', function() {
+                    return method('http://127.0.0.1:8000/econ').should.be.rejectedWith({
+                        code : 'ECONNRESET'
+                    });
+                });
+            });
+        },
+        _requestAbstractionTest = function(params) {
+            describe('method ' + params.name, function() {
+                var method,
+                    returns,
+                    request;
+
+                before(function() {
+                    method = SINON.stub(api, params.name, api[params.name]);
+                    request = SINON.stub(api, '_request', api._request);
+                    returns = api[params.name].apply(api, params.args);
+                });
+                after(function() {
+                    method.restore();
+                    request.restore();
+                });
+
+                describe('should run "_request" method', function() {
+                    it('with arguments', function() {
+                        request.should.be.calledWith(params.calledWithExpected);
+                    });
+                    it('and return result', function() {
+                        returns.should.equal(request.returnValues[0]);
+                    });
+                });
             });
         };
 
@@ -341,14 +340,14 @@ describe('Fotki', function() {
         }
     ].forEach(function(value) { _requestAbstractionTest(value); });
     // TODO: check arguments or use _requestAbstractionTest
-    describe('method uploadBinary', function() {
+    describe('method post', function() {
         describe('should run "_request" method', function() {
             var returns,
                 request;
 
             before(function() {
                 request = SINON.stub(api, '_request', function() { return VOW.fulfill(); });
-                returns = api.uploadBinary('http://api-fotki.yandex.ru/api/users/user/photos/', 'Buffer', 'image/png');
+                returns = api.post('http://api-fotki.yandex.ru/api/users/user/photos/', 'Buffer', 'image/png');
             });
             after(function() { request.restore(); });
 
@@ -396,7 +395,6 @@ describe('Fotki', function() {
             });
         });
     });
-
     describe('method getCollection', function() {
         describe('should throw error if uri', function() {
             it('not defined', function() { api.getCollection.should.throw(); });
